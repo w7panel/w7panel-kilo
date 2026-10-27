@@ -134,6 +134,36 @@ systemctl is-active kilo-172-16-1-3-forward.service
 
 从固定在 server1 的临时 Pod 测试 `ping -c 3 -W 2 172.16.1.3`，并用实际业务端口做 TCP 测试；只验证 IP 时，不把 ping 成功当作数据库服务可用。2026-10-27 的测试 Pod `10.42.0.111` ping 收到 3/3 回包，平均 36.249 ms。测试 Pod 已删除。若路由正确但没有回包，检查 agent 的 `FORWARD` 计数、`KILO-NAT` 计数和目标主机防火墙；Kilo 及 Cilium Ready 不能代替这条路径的实际测试。
 
+### MySQL 实际连接验证
+
+`172.16.1.3` 是运行本仓库操作环境的主机。2026-10-27 已在该主机启动独立测试容器 `kilo-mysql-netcheck`，镜像为 `docker.m.daocloud.io/library/mysql:8.4`，仅绑定 `172.16.1.3:3306`。启动前先检查容器名和端口，避免影响已有数据库：
+
+```sh
+docker ps -a --filter name=kilo-mysql-netcheck
+ss -ltn '( sport = :3306 )'
+```
+
+该测试容器的随机 root 密码在主机 `/home/afan/.config/kilo/mysql-netcheck.env`，文件权限为 `0600`；不要复制到仓库、聊天或 Kubernetes Pod 定义中。若需要重建**测试容器**，先确认原容器和数据确实可弃，再使用受限的本机密码文件启动：
+
+```sh
+docker run -d --rm --name kilo-mysql-netcheck \
+  --env-file /home/afan/.config/kilo/mysql-netcheck.env \
+  -p 172.16.1.3:3306:3306 docker.m.daocloud.io/library/mysql:8.4
+```
+
+先在数据库主机本地执行 `SELECT VERSION(), 1` 确认 MySQL Ready，并创建一个临时、无额外权限的测试账号。在持有 60 kubeconfig 的终端，从固定到 `server1` 的短时 MySQL 客户端 Pod 测试；`-p` 会交互提示输入该**临时账号**密码，避免把密码写入 Pod 定义或命令行参数：
+
+```sh
+kubectl --kubeconfig "$KUBECONFIG" -n kube-system run kilo-mysql-check-60 \
+  --rm -it --restart=Never --image=docker.m.daocloud.io/library/mysql:8.4 \
+  --overrides='{"spec":{"nodeName":"server1","automountServiceAccountToken":false}}' \
+  --command -- mysql --connect-timeout=5 --protocol=TCP \
+  -h 172.16.1.3 -P 3306 -u <TEMP_USER> -p -N \
+  -e 'SELECT VERSION(), 1 AS remote_sql_ok'
+```
+
+实测从 server1 Pod 登录成功，查询返回 `8.4.13` 和 `1`。测试后删除临时数据库账号并确认测试 Pod 已删除；当前测试账号和 Pod 均已清理，MySQL 测试容器仍在运行。该容器使用 `--rm` 且没有数据卷，停止后数据会丢失，不能作为正式数据库。
+
 撤销该目标访问：先在 agent 上执行 `sudo systemctl disable --now kilo-172-16-1-3-forward.service`，按需删除该 unit 并 `daemon-reload`；然后在 60 执行 `kubectl --kubeconfig "$KUBECONFIG" annotate node debian-test-1 kilo.squat.ai/allowed-location-ips-`。若原注解包含其他网段，只移除 `172.16.1.3/32` 并保留原值。
 
 ## 回滚
