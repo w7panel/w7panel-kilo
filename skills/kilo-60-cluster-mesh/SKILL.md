@@ -84,6 +84,58 @@ kubectl --kubeconfig "$KUBECONFIG" -n kube-system exec kilo-netcheck-agent-60 --
 kubectl --kubeconfig "$KUBECONFIG" -n kube-system delete pod kilo-netcheck-server-60 kilo-netcheck-agent-60
 ```
 
+## 从 server1 Pod 访问 agent 所在内网
+
+`172.16.1.3` 在 `debian-test-1` 的 `172.16.1.123/23` 本地网络中。先在 agent 上确认 `ip -4 route get 172.16.1.3` 使用 `ens18`，且 `ping -c 2 172.16.1.3` 成功；在 server1 Pod 内确认目标当前不通。只宣告所需目标，不宣告整个 `172.16.0.0/23`：
+
+```sh
+kubectl --kubeconfig "$KUBECONFIG" annotate node debian-test-1 \
+  kilo.squat.ai/allowed-location-ips=172.16.1.3/32 --overwrite
+```
+
+Kilo 会在 server1 添加 `172.16.1.3/32 via 10.4.0.2 dev kilo0`，并在 agent 对该目标启用 `KILO-NAT` 的 MASQUERADE，以便内网主机把回包送回 `172.16.1.123`。当前 agent 的 `FORWARD` 默认 DROP，Cilium 的规则没有放行 `kilo0 → ens18`；还需在 **agent 主机** 加下列两条定向规则。先检查原规则，避免覆盖其他防火墙配置：
+
+```sh
+sudo iptables -S FORWARD
+sudo iptables -C FORWARD -i kilo0 -o ens18 -d 172.16.1.3/32 -j ACCEPT 2>/dev/null || \
+  sudo iptables -I FORWARD 1 -i kilo0 -o ens18 -d 172.16.1.3/32 -j ACCEPT
+sudo iptables -C FORWARD -i ens18 -o kilo0 -s 172.16.1.3/32 \
+  -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT 2>/dev/null || \
+  sudo iptables -I FORWARD 2 -i ens18 -o kilo0 -s 172.16.1.3/32 \
+  -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+```
+
+在 agent 上用下面的 systemd unit 持久化，`ExecStart` 先检查规则是否已存在；当前生产 agent 已安装并启用它。若主网卡不是 `ens18`，先修改接口名：
+
+```sh
+sudo tee /etc/systemd/system/kilo-172-16-1-3-forward.service >/dev/null <<'EOF'
+[Unit]
+Description=Forward Kilo traffic to 172.16.1.3 through this agent
+After=k3s-agent.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/bin/sh -c '/usr/sbin/iptables -C FORWARD -i kilo0 -o ens18 -d 172.16.1.3/32 -j ACCEPT 2>/dev/null || /usr/sbin/iptables -I FORWARD 1 -i kilo0 -o ens18 -d 172.16.1.3/32 -j ACCEPT'
+ExecStart=/bin/sh -c '/usr/sbin/iptables -C FORWARD -i ens18 -o kilo0 -s 172.16.1.3/32 -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT 2>/dev/null || /usr/sbin/iptables -I FORWARD 2 -i ens18 -o kilo0 -s 172.16.1.3/32 -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT'
+ExecStop=/bin/sh -c '/usr/sbin/iptables -D FORWARD -i kilo0 -o ens18 -d 172.16.1.3/32 -j ACCEPT 2>/dev/null || true'
+ExecStop=/bin/sh -c '/usr/sbin/iptables -D FORWARD -i ens18 -o kilo0 -s 172.16.1.3/32 -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT 2>/dev/null || true'
+
+[Install]
+WantedBy=multi-user.target
+EOF
+sudo systemctl daemon-reload
+sudo systemctl enable --now kilo-172-16-1-3-forward.service
+systemctl is-enabled kilo-172-16-1-3-forward.service
+systemctl is-active kilo-172-16-1-3-forward.service
+```
+
+重启后检查 `systemctl status kilo-172-16-1-3-forward.service` 和 `iptables -L FORWARD -nv --line-numbers`。
+
+从固定在 server1 的临时 Pod 测试 `ping -c 3 -W 2 172.16.1.3`，并用实际业务端口做 TCP 测试；只验证 IP 时，不把 ping 成功当作数据库服务可用。2026-10-27 的测试 Pod `10.42.0.111` ping 收到 3/3 回包，平均 36.249 ms。测试 Pod 已删除。若路由正确但没有回包，检查 agent 的 `FORWARD` 计数、`KILO-NAT` 计数和目标主机防火墙；Kilo 及 Cilium Ready 不能代替这条路径的实际测试。
+
+撤销该目标访问：先在 agent 上执行 `sudo systemctl disable --now kilo-172-16-1-3-forward.service`，按需删除该 unit 并 `daemon-reload`；然后在 60 执行 `kubectl --kubeconfig "$KUBECONFIG" annotate node debian-test-1 kilo.squat.ai/allowed-location-ips-`。若原注解包含其他网段，只移除 `172.16.1.3/32` 并保留原值。
+
 ## 回滚
 
 按预检记录恢复原有 `force-endpoint`、`location`、`persistent-keepalive` 值；原来不存在的注解用 `kubectl annotate node <NAME> <KEY>-` 删除。不要删除整个 Node 的注解集合。若需退出集群，先迁移或排空 worker 上的业务，再按 [agent 文档](../k3s-agent-join-60/SKILL.md)处理。
