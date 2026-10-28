@@ -42,9 +42,32 @@
       </section>
 
       <section v-else class="tab-content">
-        <div class="section-head"><div><h2>区域拓扑</h2><p>按当前节点配置展示区域入口；Kilo 自动选举的 leader 请在节点页查看。</p></div></div>
+        <div class="section-head"><div><h2>区域拓扑</h2><p>区域、节点与连接关系来自当前配置；连线不代表实时隧道状态。</p></div></div>
         <div v-if="!groups.length && !loading" class="empty-state">暂无组网节点。</div>
-        <div class="topology-grid"><div v-for="group in groups" :key="group.region" class="topology-card"><span class="region-kicker">{{ group.members.length }} 个节点 · {{ group.meshIP || '组网 IP 未就绪' }}</span><h3>{{ regionName(group.region) }}</h3><p>入口：{{ leaderName(group.region) }}</p><div class="topology-links">连接至 <span v-for="other in groups.filter((item) => item.region !== group.region)" :key="other.region">{{ regionName(other.region) }}</span><span v-if="groups.length === 1">暂无其他区域</span></div></div></div>
+        <figure v-if="groups.length" class="topology-figure">
+          <figcaption class="topology-legend"><span><i class="legend-mesh"></i>区域间关系</span><span><i class="legend-member"></i>区域成员</span><span>依据配置绘制 · 非实时监测</span></figcaption>
+          <div class="topology-scroll">
+            <svg class="topology-canvas" :width="topology.width" :height="topology.height" :viewBox="`0 0 ${topology.width} ${topology.height}`" role="img" :aria-label="`${groups.length} 个区域、${visibleNodes.length} 个节点的 Kilo 配置拓扑图`">
+              <defs><pattern id="topology-dots" width="22" height="22" patternUnits="userSpaceOnUse"><circle cx="1" cy="1" r="1" fill="#dce7ed" /></pattern></defs>
+              <rect width="100%" height="100%" fill="url(#topology-dots)" />
+              <path v-for="link in topology.links" :key="link.key" :d="link.path" class="mesh-link" />
+              <g v-for="region in topology.regions" :key="region.region">
+                <path v-for="member in region.nodes" :key="nodeName(member.node)" :d="`M ${region.x} ${region.y + 49} V ${member.y - 24}`" class="member-link" />
+                <rect :x="region.x - 130" :y="region.y - 50" width="260" height="100" rx="13" class="topology-region" />
+                <circle :cx="region.x - 107" :cy="region.y - 25" r="5" class="region-signal" />
+                <text :x="region.x - 93" :y="region.y - 20" class="region-caption">区域 · {{ region.members.length }} 个节点</text>
+                <text :x="region.x - 107" :y="region.y + 9" class="region-name"><title>{{ regionName(region.region) }}</title>{{ shortName(regionName(region.region), 17) }}</text>
+                <text :x="region.x - 107" :y="region.y + 32" class="region-meta"><title>{{ leaderName(region.region) }}</title>入口 {{ shortName(leaderName(region.region), 15) }} · {{ region.meshIP || '组网 IP 未就绪' }}</text>
+                <g v-for="member in region.nodes" :key="nodeName(member.node)">
+                  <rect :x="region.x - 130" :y="member.y - 24" width="260" height="48" rx="8" class="topology-node" />
+                  <circle :cx="region.x - 108" :cy="member.y" r="5" :class="hasManualLeader(member.node) ? 'leader-signal' : 'node-signal'" />
+                  <text :x="region.x - 94" :y="member.y - 2" class="topology-node-name"><title>{{ nodeName(member.node) }}</title>{{ shortName(nodeName(member.node), 18) }}</text>
+                  <text :x="region.x - 94" :y="member.y + 14" class="topology-node-ip">{{ internalIP(member.node) || '内网 IP 未设置' }}<tspan v-if="hasManualLeader(member.node)" class="topology-leader-tag"> · LEADER</tspan></text>
+                </g>
+              </g>
+            </svg>
+          </div>
+        </figure>
       </section>
     </main>
 
@@ -61,12 +84,14 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { addRoute, deletePeer, deleteRoute, listNodes, listPeers, moveNodes, saveNodeSettings, savePeer, setLeader } from './api.js'
 import { KEY, annotations, displayNodes, endpointHost, groupNodes, hasManualLeader, nodeAddress, nodeName, regionName, routeRows } from './model.js'
+import { topologyLayout } from './topology.js'
 
 const router = useRouter(), route = useRoute()
 const active = computed(() => ['routes', 'peers', 'topology'].includes(route.name) ? route.name : 'nodes')
 const nodes = ref([]), loading = ref(false), busy = ref(false), error = ref(''), selected = ref([])
 const peers = ref([])
 const groups = computed(() => groupNodes(nodes.value))
+const topology = computed(() => topologyLayout(groups.value))
 const visibleNodes = computed(() => displayNodes(nodes.value))
 const routes = computed(() => routeRows(nodes.value))
 const moveVisible = ref(false), moveRegion = ref('')
@@ -80,6 +105,7 @@ function internalIP(node) { return (annotations(node)[KEY.forceInternal] || anno
 function publicIP(node) { return endpointHost(annotations(node)[KEY.forceEndpoint]) || nodeAddress(node, 'ExternalIP') }
 function peerEndpoint(peer) { const endpoint = peer.spec.endpoint; if (!endpoint) return ''; const host = endpoint.dnsOrIP?.dns || endpoint.dnsOrIP?.ip || ''; return `${host.includes(':') ? `[${host}]` : host}:${endpoint.port}` }
 function leaderName(region) { const group = groups.value.find((item) => item.region === region); return group?.leaders.length === 1 ? nodeName(group.leaders[0]) : group?.leaders.length ? '配置冲突' : 'Kilo 自动选举' }
+function shortName(value, length) { return value.length > length ? `${value.slice(0, length - 1)}…` : value }
 function selectNode(name, checked) { selected.value = checked ? [...new Set([...selected.value, name])] : selected.value.filter((item) => item !== name) }
 function selectGroup(group, checked) { for (const node of group.members) selectNode(nodeName(node), checked) }
 function openMove() { moveRegion.value = ''; moveVisible.value = true }

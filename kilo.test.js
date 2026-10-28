@@ -2,6 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { addRoute, deleteRoute, moveNodes, saveNodeSettings, savePeer, setLeader } from './ui/api.js'
 import { KEY, groupNodes, routeRows, validCidr, validEndpoint, validPublicKey } from './ui/model.js'
+import { topologyLayout } from './ui/topology.js'
 
 function node(name, region, extra = {}) {
   return { metadata: { name, resourceVersion: '1', annotations: { [KEY.key]: `key-${name}`, [KEY.region]: region, ...extra } }, status: { addresses: [{ type: 'InternalIP', address: '10.1.0.1' }] } }
@@ -44,6 +45,17 @@ test('explicit location overrides topology region and missing region is default'
   const unnamed = node('b', '')
   delete unnamed.metadata.annotations[KEY.region]
   assert.deepEqual(groupNodes([labeled, unnamed]).map((group) => group.region), ['', 'custom'])
+})
+
+test('topology connects regions and keeps every member below its region', () => {
+  const groups = groupNodes([node('a', 'east', { [KEY.leader]: 'true' }), node('b', 'east'), node('c', 'west')])
+  const graph = topologyLayout(groups)
+  assert.equal(graph.links.length, 1)
+  assert.equal(graph.width, 680)
+  assert.equal(graph.regions[0].x, 170)
+  assert.equal(graph.regions[0].nodes.length, 2)
+  assert.ok(graph.regions[0].nodes[0].y > graph.regions[0].y)
+  assert.ok(graph.regions[1].x - graph.regions[0].x >= 300)
 })
 
 test('route change moves all CIDRs to new leader and preserves unrelated annotations', async () => {
