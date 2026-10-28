@@ -84,12 +84,17 @@ test('adds and deletes one CIDR while retaining other routes', async () => {
 
 test('blocks moving a route owning leader to another region', async () => {
   fakeCluster([node('a', 'east', { [KEY.leader]: 'true', [KEY.routes]: '10.0.0.0/24' }), node('b', 'east')])
-  await assert.rejects(moveNodes(['a'], 'west'), /持有原区域静态路由/)
+  await assert.rejects(moveNodes(['a'], 'west'), /a 在「east」区域有静态路由 10\.0\.0\.0\/24。请先把留在原区域的其他节点设为 leader/)
 })
 
 test('blocks moving a route owning non-leader to another region', async () => {
   fakeCluster([node('a', 'east', { [KEY.leader]: 'true' }), node('b', 'east', { [KEY.routes]: '10.0.0.0/24' })])
-  await assert.rejects(moveNodes(['b'], 'west'), /持有原区域静态路由/)
+  await assert.rejects(moveNodes(['b'], 'west'), /静态路由 10\.0\.0\.0\/24。请先把留在原区域的其他节点设为 leader/)
+})
+
+test('explains that a sole route owner must remove routes before moving', async () => {
+  fakeCluster([node('agent1', 'taiyuan', { [KEY.leader]: 'true', [KEY.routes]: '172.16.1.3/32' })])
+  await assert.rejects(moveNodes(['agent1'], 'shanghai'), /agent1 在「taiyuan」区域有静态路由 172\.16\.1\.3\/32。该区域没有其他节点可接任 leader；请先到「静态路由」页删除/)
 })
 
 test('validates IPv4 and IPv6 CIDRs', () => {

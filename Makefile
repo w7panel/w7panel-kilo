@@ -7,6 +7,7 @@ packageHelm:
 
 publish-kilo:
 # 	zpk login --username=w7admin --password=${ZPK_IDC_PASSWORD} --host=zpk.fan.b2.sz.w7.com
+	zpk login --username=w7admin --password=${PASSWORD} --host=zpk.w7.cc
 	zpk use --name=w7panel-kilo
 	zpk attach add --path=./w7panel-kilo-${CNB_BRANCH}.tgz --type=helm
 	zpk attach add --path=./dist/dist.zip --type=frontend

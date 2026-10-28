@@ -1,4 +1,4 @@
-import { KEY, annotations, displayNodes, hasManualLeader, nodeName, regionOf, routesOf, validCidr, validEndpoint, validPublicKey } from './model.js'
+import { KEY, annotations, displayNodes, hasManualLeader, nodeName, regionName, regionOf, routesOf, validCidr, validEndpoint, validPublicKey } from './model.js'
 
 function proxy() {
   const fn = globalThis.window?.$wujie?.props?.k8sproxy || globalThis.microData?.cd?.k8sproxy
@@ -100,10 +100,15 @@ export async function moveNodes(names, region) {
   for (const name of names) {
     const node = nodes.find((item) => nodeName(item) === name)
     if (!node) throw new Error(`节点 ${name} 已不在 Kilo 组网中`)
-    if (regionOf(node) === region) continue
-    if (routesOf(node).length) throw new Error(`${name} 持有原区域静态路由；请先删除这些路由或将区域 leader 切换到其他节点`)
-    if (hasManualLeader(node) && routeValues(membersOf(nodes, regionOf(node))).length) {
-      throw new Error(`${name} 是原区域 leader，且该区域有静态路由；请先更换原区域 leader`)
+    const oldRegion = regionOf(node)
+    if (oldRegion === region) continue
+    const routes = routeValues(membersOf(nodes, oldRegion))
+    if (routesOf(node).length || (hasManualLeader(node) && routes.length)) {
+      const hasRemainingNode = membersOf(nodes, oldRegion).some((member) => !names.includes(nodeName(member)))
+      const nextStep = hasRemainingNode
+        ? '请先把留在原区域的其他节点设为 leader（路由会转移），或到「静态路由」页删除'
+        : '该区域没有其他节点可接任 leader；请先到「静态路由」页删除，移动后按需在新区域添加'
+      throw new Error(`${name} 在「${regionName(oldRegion)}」区域有静态路由 ${routes.join('、')}。${nextStep}。`)
     }
   }
   for (const name of names) {

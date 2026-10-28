@@ -1,16 +1,14 @@
 <template>
-  <div class="app-shell">
+  <div class="app-shell" :class="{ embedded }">
     <main class="workspace">
-      <div class="page-heading">
-        <div><h1>组网管理</h1><p class="intro">查看节点和区域，管理路由、外部 Peer 与组网连接。已加入 {{ visibleNodes.length }} 个节点。</p></div>
-        <a-button :loading="loading" @click="refresh"><template #icon><icon-refresh /></template>刷新</a-button>
-      </div>
-
       <nav class="tabs" aria-label="组网页面">
-        <router-link to="/nodes" :class="{ active: active === 'nodes' }">节点</router-link>
-        <router-link to="/routes" :class="{ active: active === 'routes' }">静态路由</router-link>
-        <router-link to="/peers" :class="{ active: active === 'peers' }">外部 Peer</router-link>
-        <router-link to="/topology" :class="{ active: active === 'topology' }">拓扑</router-link>
+        <div class="tab-links">
+          <router-link to="/nodes" :class="{ active: active === 'nodes' }">节点</router-link>
+          <router-link to="/routes" :class="{ active: active === 'routes' }">静态路由</router-link>
+          <router-link to="/peers" :class="{ active: active === 'peers' }">外部 Peer</router-link>
+          <router-link to="/topology" :class="{ active: active === 'topology' }">拓扑</router-link>
+        </div>
+        <a-button class="tabs-refresh" :loading="loading" @click="refresh"><template #icon><icon-refresh /></template>刷新</a-button>
       </nav>
 
       <a-alert v-if="error" type="error" class="load-error" :show-icon="true">{{ error }}</a-alert>
@@ -66,9 +64,9 @@
       </section>
     </main>
 
-    <a-modal v-model:visible="moveVisible" title="设置节点区域" :ok-loading="busy" @ok="saveMove" @cancel="moveVisible = false"><p class="modal-hint">将 {{ selected.length }} 个节点划入指定区域。输入现有或新的区域名称。</p><a-input v-model="moveRegion" placeholder="区域名称；留空表示默认区域" :max-length="63" /><div class="region-choices"><a-tag v-for="group in groups" :key="group.region" class="choice-tag" @click="moveRegion = group.region">{{ regionName(group.region) }}</a-tag></div></a-modal>
+    <a-modal v-model:visible="moveVisible" title="设置节点区域" :ok-loading="busy" @ok="saveMove" @cancel="moveVisible = false"><p class="modal-hint">将 {{ selected.length }} 个节点划入指定区域。输入现有或新的区域名称。若原区域有静态路由，请先将路由转移给留守节点，或在「静态路由」页删除。</p><a-input v-model="moveRegion" placeholder="区域名称；留空表示默认区域" :max-length="63" /><div class="region-choices"><a-tag v-for="group in groups" :key="group.region" class="choice-tag" @click="moveRegion = group.region">{{ regionName(group.region) }}</a-tag></div></a-modal>
     <a-modal v-model:visible="addVisible" title="添加静态路由" :ok-loading="busy" @ok="saveRoute" @cancel="addVisible = false"><a-form :model="newRoute" layout="vertical"><a-form-item label="区域"><a-select v-model="newRoute.region" placeholder="选择区域"><a-option v-for="group in groups" :key="group.region || 'default'" :value="group.region">{{ regionName(group.region) }}</a-option></a-select></a-form-item><a-form-item label="目标网段"><a-input v-model="newRoute.cidr" placeholder="例如 10.0.0.0/24" /></a-form-item></a-form><p class="modal-hint">该网段将从其他区域通过 Kilo 路由到所选区域。</p></a-modal>
-    <a-modal v-model:visible="settingsVisible" :title="`${settingsName} · 连接设置`" :ok-loading="busy" @ok="submitSettings"><a-form :model="settings" layout="vertical"><a-form-item label="公网 Endpoint"><a-input v-model="settings.endpoint" placeholder="例如 example.com:51820；留空自动检测" /></a-form-item><a-form-item label="内网 IP"><a-input v-model="settings.internal" placeholder="例如 192.168.1.2/32；输入 - 可禁用" /></a-form-item><a-form-item label="Keepalive（秒）"><a-input v-model="settings.keepalive" placeholder="NAT 后节点可设 25；留空使用默认值" /></a-form-item></a-form></a-modal>
+    <a-modal v-model:visible="settingsVisible" :title="`${settingsName} · 连接设置`" :ok-loading="busy" @ok="submitSettings"><a-form :model="settings" layout="vertical"><a-form-item label="公网 Endpoint"><a-input v-model="settings.endpoint" placeholder="例如 example.com:51820；留空自动检测" /></a-form-item><a-form-item label="内网 IP（本节点）" help="同一区域的节点访问本节点时使用。通常留空由 Kilo 自动检测；检测错误时填本节点可达的地址（如 192.168.1.2/32）；填 - 表示不使用内网 IP。访问节点后方网段请配置静态路由。"><a-input v-model="settings.internal" placeholder="例如 192.168.1.2/32；输入 - 可禁用" /></a-form-item><a-form-item label="Keepalive（秒）"><a-input v-model="settings.keepalive" placeholder="NAT 后节点可设 25；留空使用默认值" /></a-form-item></a-form></a-modal>
     <a-modal v-model:visible="peerVisible" :title="peerEditing ? '编辑 Peer' : '添加 Peer'" :ok-loading="busy" @ok="submitPeer"><a-form :model="peerDraft" layout="vertical"><a-form-item label="名称"><a-input v-model="peerDraft.name" :disabled="peerEditing" placeholder="例如 branch-gateway" /></a-form-item><a-form-item label="WireGuard 公钥"><a-input v-model="peerDraft.publicKey" placeholder="44 位 Base64 公钥" /></a-form-item><a-form-item label="对外提供的网段"><a-textarea v-model="peerDraft.allowedIPs" placeholder="每行一个 CIDR，例如 10.5.0.1/32" :auto-size="{ minRows: 2, maxRows: 5 }" /></a-form-item><a-form-item label="Endpoint（可选）"><a-input v-model="peerDraft.endpoint" placeholder="例如 gateway.example.com:51820" /></a-form-item><a-form-item label="Keepalive（秒）"><a-input v-model="peerDraft.keepalive" placeholder="0 表示关闭" /></a-form-item><a-form-item label="预共享密钥（可选）"><a-input-password v-model="peerDraft.presharedKey" placeholder="留空表示不使用" /></a-form-item></a-form><p class="modal-hint">保存前确认网段不会与集群或其他 Peer 重叠。</p></a-modal>
   </div>
 </template>
@@ -94,6 +92,7 @@ const addVisible = ref(false), newRoute = ref({ region: undefined, cidr: '' })
 const settingsVisible = ref(false), settingsName = ref(''), settings = ref({ endpoint: '', internal: '', keepalive: '' })
 const peerVisible = ref(false), peerSource = ref(null), peerDraft = ref({ name: '', publicKey: '', allowedIPs: '', endpoint: '', keepalive: '0', presharedKey: '' })
 const peerEditing = computed(() => Boolean(peerSource.value))
+const embedded = Boolean(globalThis.window?.__POWERED_BY_WUJIE__)
 const wujieBus = globalThis.window?.$wujie?.bus
 
 function internalIP(node) { return (annotations(node)[KEY.forceInternal] || annotations(node)[KEY.internal] || nodeAddress(node, 'InternalIP')).split('/')[0] }

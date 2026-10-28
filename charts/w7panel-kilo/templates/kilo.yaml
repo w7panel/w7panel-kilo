@@ -103,6 +103,7 @@ spec:
         - --cni=false
         - --compatibility=cilium
         - --local=false
+        - {{ printf "--subnet=%s" .Values.meshSubnet | quote }}
         - --encapsulate=crosssubnet
         - --clean-up-interface=true
         - --log-level=all

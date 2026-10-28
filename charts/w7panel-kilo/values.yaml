@@ -1,3 +1,5 @@
 image:
   repository: squat/kilo
   tag: "0.7.0"
+
+meshSubnet: "172.4.0.0/16"
