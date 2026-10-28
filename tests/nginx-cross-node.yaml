@@ -1,0 +1,43 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nginx-cross-node
+  namespace: default
+  labels:
+    app: nginx-cross-node
+    w7.cc/group-name: nginx-cross-node
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: nginx-cross-node
+  template:
+    metadata:
+      labels:
+        app: nginx-cross-node
+    spec:
+      automountServiceAccountToken: false
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchLabels:
+                  app: nginx-cross-node
+              topologyKey: kubernetes.io/hostname
+      containers:
+        - name: nginx
+          image: ccr.ccs.tencentyun.com/afan-public/nginx:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 80
+              protocol: TCP
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 80
+              scheme: HTTP
+            initialDelaySeconds: 2
+            timeoutSeconds: 1
+            periodSeconds: 5
+            successThreshold: 1
+            failureThreshold: 3
