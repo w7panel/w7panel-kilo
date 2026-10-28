@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { addRoute, deleteRoute, moveNodes, saveNodeSettings, savePeer, setLeader } from './src/api.js'
-import { KEY, groupNodes, routeRows, validCidr, validEndpoint, validPublicKey } from './src/model.js'
+import { addRoute, deleteRoute, moveNodes, saveNodeSettings, savePeer, setLeader } from './ui/api.js'
+import { KEY, groupNodes, routeRows, validCidr, validEndpoint, validPublicKey } from './ui/model.js'
 
 function node(name, region, extra = {}) {
   return { metadata: { name, resourceVersion: '1', annotations: { [KEY.key]: `key-${name}`, [KEY.region]: region, ...extra } }, status: { addresses: [{ type: 'InternalIP', address: '10.1.0.1' }] } }
