@@ -1,14 +1,9 @@
 <template>
   <div class="app-shell">
-    <header class="masthead">
-      <div class="brand"><span class="brand-mark">K</span><span><strong>Kilo 组网</strong><small>节点与区域路由</small></span></div>
-      <a-button :loading="loading" @click="refresh"><template #icon><icon-refresh /></template>刷新</a-button>
-    </header>
-
     <main class="workspace">
       <div class="page-heading">
-        <div><p class="eyebrow">NETWORK / KILO</p><h1>组网管理</h1><p class="intro">查看节点和区域，管理路由、外部 Peer 与组网连接。</p></div>
-        <div class="node-count"><b>{{ visibleNodes.length }}</b><span>已加入节点</span></div>
+        <div><h1>组网管理</h1><p class="intro">查看节点和区域，管理路由、外部 Peer 与组网连接。已加入 {{ visibleNodes.length }} 个节点。</p></div>
+        <a-button :loading="loading" @click="refresh"><template #icon><icon-refresh /></template>刷新</a-button>
       </div>
 
       <nav class="tabs" aria-label="组网页面">
