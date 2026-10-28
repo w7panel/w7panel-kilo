@@ -51,7 +51,7 @@ kubectl --kubeconfig "$KUBECONFIG" annotate node <GATEWAY_NODE> \
   kilo.squat.ai/allowed-location-ips=172.16.1.3/32 --overwrite
 ```
 
-修改注解只改变 Kilo 眼中的拓扑；公网 UDP 51820 转发、主机防火墙和 NAT 仍要在环境侧配置。也可用本仓库面板（w7panel-kilo 前端）改 `location`、`leader`、`allowed-location-ips`，保存即写回集群。
+修改注解只改变 Kilo 眼中的拓扑；公网 UDP 51820 转发、主机防火墙和 NAT 仍要在环境侧配置。也可用本仓库面板（w7panel-kilo 前端）管理表中 6 个配置注解，保存即写回集群。
 
 ## kgctl
 
@@ -114,7 +114,8 @@ spec:
     - 10.0.0.15/32
     - 10.0.0.17/32
   endpoint:              # 集群方向：节点拨 212 的这个入口
-    host: <212_PUBLIC_HOST>
+    dnsOrIP:
+      ip: <212_PUBLIC_IP>
     port: 51821
 ```
 
@@ -159,13 +160,15 @@ spec:
     - <peer-ip>/32
     - <remote-cidr>
   endpoint:
-    host: example-peer.example.com
+    dnsOrIP:
+      dns: example-peer.example.com
     port: 51820
   persistentKeepalive: 25
 ```
 
 - `publicKey` 必填。`endpoint`（`host:port`）填对端**自己的**公开地址时，表示集群主动外连它；Peer 主动拨入集群（如 `kgctl connect`）则不写 `endpoint`，集群在握手后学到它的真实地址。
 - `allowedIPs` 决定集群侧写入 `kilo0` 的路由；地址重叠会导致路由错乱甚至业务不可达，文件应用前先核对 CIDR。
+- 面板的“外部 Peer”页可创建、编辑和删除这些资源；接入端的 WireGuard 配置仍需在设备上完成。
 - 验收：`kubectl get peer` 能读到、`wg show kilo0` 握手成功、再从集群 Pod 与对端实际端口双向测通。
 
 ## 参考链接
