@@ -5,6 +5,8 @@ description: 配置和验证 60 生产 K3s 集群的 Kilo 跨网络节点互联�
 
 # 60 集群跨网络 Kilo
 
+60 集群的 K3s Node PodCIDR 与 Cilium 实际分配网段可能错位。排查与迁移注意事项见 [PodCIDR 错位记录](references/podcidr-mismatch.md)。
+
 60 是主 K3s 集群，`server1` 为 `10.200.200.3`，公网 `60.166.152.115:51820/UDP` 需转发到该节点。`172.16.1.123` 是加入同一集群的 worker，所在网络不能直达 `10.200.200.3`。两节点分别放在不同的 Kilo location；worker 经 NAT 主动连接 server1，设置 25 秒 keepalive。不要在 worker 上运行 `kgctl connect` 或创建同名独立 Peer。
 
 沿用现有 Kilo `0.7.0` 和 Cilium 附加模式（`--cni=false --compatibility=cilium --local=false`）。不要应用会删除 Cilium CNI 文件的独立 Kilo CNI 清单。加入步骤见 [k3s-agent-join-60](../k3s-agent-join-60/SKILL.md)；访问 212 VPC 数据库另见 [kilo-vpc-database-gateway](../kilo-vpc-database-gateway/SKILL.md)。
