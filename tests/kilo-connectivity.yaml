@@ -1,0 +1,93 @@
+# Apply: kubectl --kubeconfig <cluster-config> apply -f tests/kilo-connectivity.yaml
+# Clean up: kubectl --kubeconfig <cluster-config> delete namespace kilo-connectivity-test
+# 218-specific: server1=10.4.0.1, agent1=10.4.0.2; update these IPs if Kilo reallocates them.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: kilo-connectivity-test
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kilo-test-server
+  namespace: kilo-connectivity-test
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: kilo-test-server
+  template:
+    metadata:
+      labels:
+        app: kilo-test-server
+    spec:
+      hostNetwork: true
+      nodeSelector:
+        kubernetes.io/hostname: server1
+      containers:
+        - name: http
+          image: quay.io/cilium/cilium:v1.16.4
+          imagePullPolicy: IfNotPresent
+          command: [/usr/bin/cilium-health-responder, --listen, "18080"]
+          ports:
+            - containerPort: 18080
+              name: http
+          readinessProbe:
+            exec:
+              command:
+                - /usr/bin/bash
+                - -c
+                - exec 3<>/dev/tcp/10.4.0.2/18080
+            periodSeconds: 5
+            timeoutSeconds: 3
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              memory: 128Mi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kilo-test-agent
+  namespace: kilo-connectivity-test
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: kilo-test-agent
+  template:
+    metadata:
+      labels:
+        app: kilo-test-agent
+    spec:
+      hostNetwork: true
+      nodeSelector:
+        kubernetes.io/hostname: agent1
+      containers:
+        - name: http
+          image: quay.io/cilium/cilium:v1.16.4
+          imagePullPolicy: IfNotPresent
+          command: [/usr/bin/cilium-health-responder, --listen, "18080"]
+          ports:
+            - containerPort: 18080
+              name: http
+          readinessProbe:
+            exec:
+              command:
+                - /usr/bin/bash
+                - -c
+                - exec 3<>/dev/tcp/10.4.0.1/18080
+            periodSeconds: 5
+            timeoutSeconds: 3
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              memory: 128Mi
