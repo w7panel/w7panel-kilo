@@ -6,6 +6,7 @@ description: 配置和验证 60 生产 K3s 集群的 Kilo 跨网络节点互联�
 # 60 集群跨网络 Kilo
 
 60 集群的 K3s Node PodCIDR 与 Cilium 实际分配网段可能错位。排查与迁移注意事项见 [PodCIDR 错位记录](references/podcidr-mismatch.md)。
+保留现有数据时按 [保守处理 skill](../kilo-cilium-ipam-conservative/SKILL.md) 验证和修复实际流量；需要统一 IPAM 分配来源时按 [重装迁移 skill](../kilo-cilium-ipam-reinstall/SKILL.md) 准备备份与迁移。
 
 60 是主 K3s 集群，`server1` 为 `10.200.200.3`，公网 `60.166.152.115:51820/UDP` 需转发到该节点。`172.16.1.123` 是加入同一集群的 worker，所在网络不能直达 `10.200.200.3`。两节点分别放在不同的 Kilo location；worker 经 NAT 主动连接 server1，设置 25 秒 keepalive。不要在 worker 上运行 `kgctl connect` 或创建同名独立 Peer。
 
