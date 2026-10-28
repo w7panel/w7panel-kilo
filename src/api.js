@@ -2,8 +2,11 @@ import { KEY, annotations, displayNodes, hasManualLeader, nodeName, regionOf, ro
 
 function proxy() {
   const fn = globalThis.window?.$wujie?.props?.k8sproxy || globalThis.microData?.cd?.k8sproxy
-  if (typeof fn !== 'function') throw new Error('W7Panel 未提供 Kubernetes 代理，请在面板中打开应用')
-  return fn
+  if (typeof fn === 'function') return fn
+  if (import.meta.env?.DEV && !globalThis.window?.__POWERED_BY_WUJIE__ && !globalThis.microData?.cd) {
+    return (path, options) => fetch(`/local/k8s${path}`, options)
+  }
+  throw new Error('W7Panel 未提供 Kubernetes 代理，请在面板中打开应用')
 }
 
 async function request(path, options) {
