@@ -25,5 +25,5 @@ function panelCors() {
 export default defineConfig(({ command }) => ({
   base: command === 'serve' ? `${devOrigin}/` : './',
   plugins: [panelCors(), vue()],
-  server: { host: '0.0.0.0', origin: devOrigin, cors: false, proxy: { '/local/k8s': 'http://127.0.0.1:8016' } },
+  server: { host: '0.0.0.0', origin: devOrigin, cors: false, proxy: { '/local/k8s': `http://127.0.0.1:${process.env.KILO_API_PORT || 8016}` } },
 }))

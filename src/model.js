@@ -7,6 +7,7 @@ export const KEY = {
   internal: 'kilo.squat.ai/internal-ip',
   forceInternal: 'kilo.squat.ai/force-internal-ip',
   forceEndpoint: 'kilo.squat.ai/force-endpoint',
+  keepalive: 'kilo.squat.ai/persistent-keepalive',
 }
 
 export const DEFAULT_REGION = ''
@@ -65,4 +66,19 @@ export function validCidr(value) {
   try {
     return new URL(`http://[${address}]/`).hostname.startsWith('[') && Number(prefix) <= 128
   } catch { return false }
+}
+
+export function validEndpoint(value) {
+  const match = String(value).match(/^(\[[0-9a-fA-F:.]+\]|[a-zA-Z0-9](?:[a-zA-Z0-9.-]*[a-zA-Z0-9])?):([0-9]+)$/)
+  if (!match || Number(match[2]) < 1 || Number(match[2]) > 65535) return false
+  if (match[1].startsWith('[')) {
+    try { new URL(`http://${match[1]}/`); return true } catch { return false }
+  }
+  if (/^[\d.]+$/.test(match[1])) return match[1].split('.').length === 4 && match[1].split('.').every((part) => Number(part) <= 255)
+  return !match[1].includes('..')
+}
+
+export function validPublicKey(value) {
+  if (!/^[A-Za-z0-9+/]{43}=$/.test(value || '')) return false
+  try { return atob(value).length === 32 } catch { return false }
 }

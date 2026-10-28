@@ -1,4 +1,4 @@
-import { KEY, annotations, displayNodes, hasManualLeader, nodeName, regionOf, routesOf, validCidr } from './model.js'
+import { KEY, annotations, displayNodes, hasManualLeader, nodeName, regionOf, routesOf, validCidr, validEndpoint, validPublicKey } from './model.js'
 
 function proxy() {
   const fn = globalThis.window?.$wujie?.props?.k8sproxy || globalThis.microData?.cd?.k8sproxy
@@ -17,6 +17,33 @@ async function request(path, options) {
 
 export async function listNodes() {
   return (await request('/api/v1/nodes')).items || []
+}
+
+const peersPath = '/apis/kilo.squat.ai/v1alpha1/peers'
+export async function listPeers() { return (await request(peersPath)).items || [] }
+
+export async function savePeer(peer) {
+  const name = peer.metadata?.name?.trim()
+  const spec = peer.spec || {}
+  if (!name || name.length > 253 || name.split('.').some((part) => !/^[a-z0-9](?:[-a-z0-9]*[a-z0-9])?$/.test(part) || part.length > 63)) throw new Error('Peer 名称须为小写字母、数字、点或连字符')
+  if (!validPublicKey(spec.publicKey)) throw new Error('请输入有效的 WireGuard 公钥')
+  if (!spec.allowedIPs?.length || spec.allowedIPs.some((ip) => !validCidr(ip))) throw new Error('请输入至少一个有效的 Peer 网段')
+  if (spec.endpoint) {
+    const host = spec.endpoint.dnsOrIP?.dns || spec.endpoint.dnsOrIP?.ip || ''
+    if (!validEndpoint(`${host.includes(':') ? `[${host}]` : host}:${spec.endpoint.port}`)) throw new Error('请输入有效的 Peer Endpoint')
+  }
+  if (!Number.isInteger(spec.persistentKeepalive) || spec.persistentKeepalive < 0) throw new Error('Keepalive 须为非负整数')
+  if (spec.presharedKey && !validPublicKey(spec.presharedKey)) throw new Error('预共享密钥须为 32 字节的 Base64 字符串')
+  const existing = peer.metadata.resourceVersion
+  return request(existing ? `${peersPath}/${encodeURIComponent(name)}` : peersPath, {
+    method: existing ? 'PUT' : 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(peer),
+  })
+}
+
+export async function deletePeer(name) {
+  return request(`${peersPath}/${encodeURIComponent(name)}`, { method: 'DELETE' })
 }
 
 async function getNode(name) {
@@ -42,6 +69,18 @@ async function patchAnnotations(name, changes) {
       body: JSON.stringify(ops),
     })
   } catch (error) { throw new Error(`${name}：${error.message}`) }
+}
+
+export async function saveNodeSettings(name, values) {
+  const endpoint = values.endpoint.trim(), internal = values.internal.trim(), keepalive = values.keepalive.trim()
+  if (endpoint && !validEndpoint(endpoint)) throw new Error('公网 Endpoint 须为 host:端口，例如 example.com:51820')
+  if (internal && internal !== '-' && !validCidr(internal)) throw new Error('内网 IP 须为 CIDR，例如 192.168.1.2/32；输入 - 可禁用')
+  if (keepalive && (!/^\d+$/.test(keepalive) || Number(keepalive) > 2147483647)) throw new Error('Keepalive 须为非负整数秒数')
+  await patchAnnotations(name, {
+    [KEY.forceEndpoint]: endpoint || null,
+    [KEY.forceInternal]: internal || null,
+    [KEY.keepalive]: keepalive || null,
+  })
 }
 
 async function currentGroups() {

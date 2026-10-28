@@ -7,13 +7,15 @@
 
     <main class="workspace">
       <div class="page-heading">
-        <div><p class="eyebrow">NETWORK / KILO</p><h1>组网管理</h1><p class="intro">按区域查看节点，指定连接其他区域的 leader，并管理目标网段。</p></div>
+        <div><p class="eyebrow">NETWORK / KILO</p><h1>组网管理</h1><p class="intro">查看节点和区域，管理路由、外部 Peer 与组网连接。</p></div>
         <div class="node-count"><b>{{ visibleNodes.length }}</b><span>已加入节点</span></div>
       </div>
 
       <nav class="tabs" aria-label="组网页面">
         <router-link to="/nodes" :class="{ active: active === 'nodes' }">节点</router-link>
         <router-link to="/routes" :class="{ active: active === 'routes' }">静态路由</router-link>
+        <router-link to="/peers" :class="{ active: active === 'peers' }">外部 Peer</router-link>
+        <router-link to="/topology" :class="{ active: active === 'topology' }">拓扑</router-link>
       </nav>
 
       <a-alert v-if="error" type="error" class="load-error" :show-icon="true">{{ error }}</a-alert>
@@ -24,50 +26,74 @@
         <div v-for="group in groups" :key="group.region" class="region-card">
           <div class="region-head"><div class="region-title"><span class="region-dot"></span><div><span class="region-kicker">区域 · {{ group.members.length }} 个节点</span><h3>{{ regionName(group.region) }}</h3></div></div><div class="region-leader"><span>区域 leader</span><b>{{ group.leaders.length === 1 ? nodeName(group.leaders[0]) : group.leaders.length ? '配置冲突' : 'Kilo 自动选举' }}</b></div></div>
           <div class="table-scroll"><table class="data-table"><thead><tr><th class="check-col"><a-checkbox :model-value="group.members.every((node) => selected.includes(nodeName(node)))" @change="(checked) => selectGroup(group, checked)" :aria-label="`选择 ${regionName(group.region)} 区域全部节点`" /></th><th>节点</th><th>内网 IP</th><th>组网 IP</th><th>公网地址</th><th>操作</th></tr></thead><tbody>
-            <tr v-for="node in group.members" :key="nodeName(node)"><td><a-checkbox :model-value="selected.includes(nodeName(node))" @change="(checked) => selectNode(nodeName(node), checked)" :aria-label="`选择节点 ${nodeName(node)}`" /></td><td class="node-name"><span>{{ nodeName(node) }}</span><em v-if="hasManualLeader(node)">LEADER</em></td><td class="mono">{{ internalIP(node) || '—' }}</td><td class="mono">{{ group.meshIP || '—' }}<small v-if="group.meshIP" class="shared-label">区域共享</small></td><td class="mono">{{ publicIP(node) || '—' }}</td><td><a-button size="small" type="text" :disabled="busy || (group.leaders.length === 1 && nodeName(group.leaders[0]) === nodeName(node))" @click="chooseLeader(group, node)">设为 leader</a-button></td></tr>
+            <tr v-for="node in group.members" :key="nodeName(node)"><td><a-checkbox :model-value="selected.includes(nodeName(node))" @change="(checked) => selectNode(nodeName(node), checked)" :aria-label="`选择节点 ${nodeName(node)}`" /></td><td class="node-name"><span>{{ nodeName(node) }}</span><em v-if="hasManualLeader(node)">LEADER</em></td><td class="mono">{{ internalIP(node) || '—' }}</td><td class="mono">{{ group.meshIP || '—' }}<small v-if="group.meshIP" class="shared-label">区域共享</small></td><td class="mono">{{ publicIP(node) || '—' }}</td><td><a-button size="small" type="text" :disabled="busy || (group.leaders.length === 1 && nodeName(group.leaders[0]) === nodeName(node))" @click="chooseLeader(group, node)">设为 leader</a-button><a-button size="small" type="text" :disabled="busy" @click="openSettings(node)">连接设置</a-button></td></tr>
           </tbody></table></div>
         </div>
       </section>
 
-      <section v-else class="tab-content">
+      <section v-else-if="active === 'routes'" class="tab-content">
         <div class="section-head"><div><h2>静态路由</h2><p>目标网段由所选区域对外提供，配置保存在该区域 leader 上。</p></div><a-button type="primary" @click="openAdd">添加静态路由</a-button></div>
         <div class="route-card"><div v-if="!routes.length && !loading" class="empty-state">暂无静态路由。先在节点页为区域指定 leader，再添加目标网段。</div><div v-else class="table-scroll"><table class="data-table"><thead><tr><th>区域</th><th>目标网段</th><th>区域 leader</th><th>操作</th></tr></thead><tbody><tr v-for="routeItem in routes" :key="routeItem.id"><td>{{ regionName(routeItem.region) }}</td><td class="mono">{{ routeItem.cidr }}</td><td>{{ leaderName(routeItem.region) }}</td><td><a-popconfirm content="确定删除这条静态路由？" @ok="removeRoute(routeItem)"><a-button type="text" status="danger" size="small" :disabled="busy">删除</a-button></a-popconfirm></td></tr></tbody></table></div></div>
+      </section>
+
+      <section v-else-if="active === 'peers'" class="tab-content">
+        <div class="section-head"><div><h2>外部 Peer</h2><p>为外部设备声明公钥和它对外提供的网段；接入端需自行配置 WireGuard。</p></div><a-button type="primary" @click="openPeer()">添加 Peer</a-button></div>
+        <div class="route-card"><div v-if="!peers.length && !loading" class="empty-state">暂无外部 Peer。添加后，Kilo 会将其网段加入组网。</div><div v-else class="table-scroll"><table class="data-table"><thead><tr><th>名称</th><th>对外提供的网段</th><th>Endpoint</th><th>Keepalive</th><th>操作</th></tr></thead><tbody><tr v-for="peer in peers" :key="peer.metadata.name"><td class="node-name">{{ peer.metadata.name }}</td><td class="mono">{{ peer.spec.allowedIPs.join(', ') }}</td><td class="mono">{{ peerEndpoint(peer) || '—' }}</td><td>{{ peer.spec.persistentKeepalive || '—' }}</td><td><a-button type="text" size="small" :disabled="busy" @click="openPeer(peer)">编辑</a-button><a-popconfirm content="确定删除这个 Peer？外部连接会中断。" @ok="removePeer(peer)"><a-button type="text" status="danger" size="small" :disabled="busy">删除</a-button></a-popconfirm></td></tr></tbody></table></div></div>
+      </section>
+
+      <section v-else class="tab-content">
+        <div class="section-head"><div><h2>区域拓扑</h2><p>按当前节点配置展示区域入口；Kilo 自动选举的 leader 请在节点页查看。</p></div></div>
+        <div v-if="!groups.length && !loading" class="empty-state">暂无组网节点。</div>
+        <div class="topology-grid"><div v-for="group in groups" :key="group.region" class="topology-card"><span class="region-kicker">{{ group.members.length }} 个节点 · {{ group.meshIP || '组网 IP 未就绪' }}</span><h3>{{ regionName(group.region) }}</h3><p>入口：{{ leaderName(group.region) }}</p><div class="topology-links">连接至 <span v-for="other in groups.filter((item) => item.region !== group.region)" :key="other.region">{{ regionName(other.region) }}</span><span v-if="groups.length === 1">暂无其他区域</span></div></div></div>
       </section>
     </main>
 
     <a-modal v-model:visible="moveVisible" title="设置节点区域" :ok-loading="busy" @ok="saveMove" @cancel="moveVisible = false"><p class="modal-hint">将 {{ selected.length }} 个节点划入指定区域。输入现有或新的区域名称。</p><a-input v-model="moveRegion" placeholder="区域名称；留空表示默认区域" :max-length="63" /><div class="region-choices"><a-tag v-for="group in groups" :key="group.region" class="choice-tag" @click="moveRegion = group.region">{{ regionName(group.region) }}</a-tag></div></a-modal>
     <a-modal v-model:visible="addVisible" title="添加静态路由" :ok-loading="busy" @ok="saveRoute" @cancel="addVisible = false"><a-form :model="newRoute" layout="vertical"><a-form-item label="区域"><a-select v-model="newRoute.region" placeholder="选择区域"><a-option v-for="group in groups" :key="group.region || 'default'" :value="group.region">{{ regionName(group.region) }}</a-option></a-select></a-form-item><a-form-item label="目标网段"><a-input v-model="newRoute.cidr" placeholder="例如 10.0.0.0/24" /></a-form-item></a-form><p class="modal-hint">该网段将从其他区域通过 Kilo 路由到所选区域。</p></a-modal>
+    <a-modal v-model:visible="settingsVisible" :title="`${settingsName} · 连接设置`" :ok-loading="busy" @ok="submitSettings"><a-form :model="settings" layout="vertical"><a-form-item label="公网 Endpoint"><a-input v-model="settings.endpoint" placeholder="例如 example.com:51820；留空自动检测" /></a-form-item><a-form-item label="内网 IP"><a-input v-model="settings.internal" placeholder="例如 192.168.1.2/32；输入 - 可禁用" /></a-form-item><a-form-item label="Keepalive（秒）"><a-input v-model="settings.keepalive" placeholder="NAT 后节点可设 25；留空使用默认值" /></a-form-item></a-form></a-modal>
+    <a-modal v-model:visible="peerVisible" :title="peerEditing ? '编辑 Peer' : '添加 Peer'" :ok-loading="busy" @ok="submitPeer"><a-form :model="peerDraft" layout="vertical"><a-form-item label="名称"><a-input v-model="peerDraft.name" :disabled="peerEditing" placeholder="例如 branch-gateway" /></a-form-item><a-form-item label="WireGuard 公钥"><a-input v-model="peerDraft.publicKey" placeholder="44 位 Base64 公钥" /></a-form-item><a-form-item label="对外提供的网段"><a-textarea v-model="peerDraft.allowedIPs" placeholder="每行一个 CIDR，例如 10.5.0.1/32" :auto-size="{ minRows: 2, maxRows: 5 }" /></a-form-item><a-form-item label="Endpoint（可选）"><a-input v-model="peerDraft.endpoint" placeholder="例如 gateway.example.com:51820" /></a-form-item><a-form-item label="Keepalive（秒）"><a-input v-model="peerDraft.keepalive" placeholder="0 表示关闭" /></a-form-item><a-form-item label="预共享密钥（可选）"><a-input-password v-model="peerDraft.presharedKey" placeholder="留空表示不使用" /></a-form-item></a-form><p class="modal-hint">保存前确认网段不会与集群或其他 Peer 重叠。</p></a-modal>
   </div>
 </template>
 
 <script setup>
 import { Message } from '@arco-design/web-vue'
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { addRoute, deleteRoute, listNodes, moveNodes, setLeader } from './api.js'
+import { addRoute, deletePeer, deleteRoute, listNodes, listPeers, moveNodes, saveNodeSettings, savePeer, setLeader } from './api.js'
 import { KEY, annotations, displayNodes, endpointHost, groupNodes, hasManualLeader, nodeAddress, nodeName, regionName, routeRows } from './model.js'
 
 const router = useRouter(), route = useRoute()
-const active = computed(() => route.name === 'routes' ? 'routes' : 'nodes')
+const active = computed(() => ['routes', 'peers', 'topology'].includes(route.name) ? route.name : 'nodes')
 const nodes = ref([]), loading = ref(false), busy = ref(false), error = ref(''), selected = ref([])
+const peers = ref([])
 const groups = computed(() => groupNodes(nodes.value))
 const visibleNodes = computed(() => displayNodes(nodes.value))
 const routes = computed(() => routeRows(nodes.value))
 const moveVisible = ref(false), moveRegion = ref('')
 const addVisible = ref(false), newRoute = ref({ region: undefined, cidr: '' })
+const settingsVisible = ref(false), settingsName = ref(''), settings = ref({ endpoint: '', internal: '', keepalive: '' })
+const peerVisible = ref(false), peerSource = ref(null), peerDraft = ref({ name: '', publicKey: '', allowedIPs: '', endpoint: '', keepalive: '0', presharedKey: '' })
+const peerEditing = computed(() => Boolean(peerSource.value))
 const wujieBus = globalThis.window?.$wujie?.bus
 
 function internalIP(node) { return (annotations(node)[KEY.forceInternal] || annotations(node)[KEY.internal] || nodeAddress(node, 'InternalIP')).split('/')[0] }
-function publicIP(node) { return nodeAddress(node, 'ExternalIP') || endpointHost(annotations(node)[KEY.forceEndpoint]) }
+function publicIP(node) { return endpointHost(annotations(node)[KEY.forceEndpoint]) || nodeAddress(node, 'ExternalIP') }
+function peerEndpoint(peer) { const endpoint = peer.spec.endpoint; if (!endpoint) return ''; const host = endpoint.dnsOrIP?.dns || endpoint.dnsOrIP?.ip || ''; return `${host.includes(':') ? `[${host}]` : host}:${endpoint.port}` }
 function leaderName(region) { const group = groups.value.find((item) => item.region === region); return group?.leaders.length === 1 ? nodeName(group.leaders[0]) : group?.leaders.length ? '配置冲突' : 'Kilo 自动选举' }
 function selectNode(name, checked) { selected.value = checked ? [...new Set([...selected.value, name])] : selected.value.filter((item) => item !== name) }
 function selectGroup(group, checked) { for (const node of group.members) selectNode(nodeName(node), checked) }
 function openMove() { moveRegion.value = ''; moveVisible.value = true }
 function openAdd() { newRoute.value = { region: groups.value[0]?.region, cidr: '' }; addVisible.value = true }
+function openSettings(node) { settingsName.value = nodeName(node); const data = annotations(node); settings.value = { endpoint: data[KEY.forceEndpoint] || '', internal: data[KEY.forceInternal] || '', keepalive: data[KEY.keepalive] || '' }; settingsVisible.value = true }
+function openPeer(peer) {
+  peerSource.value = peer || null
+  peerDraft.value = peer ? { name: peer.metadata.name, publicKey: peer.spec.publicKey, allowedIPs: peer.spec.allowedIPs.join('\n'), endpoint: peerEndpoint(peer), keepalive: String(peer.spec.persistentKeepalive || 0), presharedKey: peer.spec.presharedKey || '' } : { name: '', publicKey: '', allowedIPs: '', endpoint: '', keepalive: '0', presharedKey: '' }
+  peerVisible.value = true
+}
 
 async function refresh() {
   loading.value = true
-  try { nodes.value = await listNodes(); error.value = ''; selected.value = selected.value.filter((name) => visibleNodes.value.some((node) => nodeName(node) === name)) }
+  try { nodes.value = await listNodes(); if (active.value === 'peers') peers.value = await listPeers(); error.value = ''; selected.value = selected.value.filter((name) => visibleNodes.value.some((node) => nodeName(node) === name)) }
   catch (failure) { error.value = failure.message }
   finally { loading.value = false }
 }
@@ -90,7 +116,21 @@ async function saveRoute() {
   if (await mutate(() => addRoute(newRoute.value.region, newRoute.value.cidr), '静态路由已添加')) addVisible.value = false
 }
 async function removeRoute(item) { await mutate(() => deleteRoute(item.region, item.cidr), '静态路由已删除') }
+async function submitSettings() { if (await mutate(() => saveNodeSettings(settingsName.value, settings.value), '节点连接设置已保存')) settingsVisible.value = false }
+async function submitPeer() {
+  const form = peerDraft.value
+  const endpoint = form.endpoint.trim()
+  const host = endpoint.slice(0, endpoint.lastIndexOf(':')).replace(/^\[|\]$/g, '')
+  const port = Number(endpoint.slice(endpoint.lastIndexOf(':') + 1))
+  const spec = { publicKey: form.publicKey.trim(), allowedIPs: form.allowedIPs.split(/[\n,]/).map((ip) => ip.trim()).filter(Boolean), persistentKeepalive: Number(form.keepalive) }
+  if (endpoint) spec.endpoint = { dnsOrIP: /[:]/.test(host) || /^\d+\.\d+\.\d+\.\d+$/.test(host) ? { ip: host } : { dns: host }, port }
+  if (form.presharedKey.trim()) spec.presharedKey = form.presharedKey.trim()
+  const peer = { apiVersion: 'kilo.squat.ai/v1alpha1', kind: 'Peer', metadata: peerSource.value?.metadata || { name: form.name.trim() }, spec }
+  if (await mutate(() => savePeer(peer), 'Peer 已保存')) peerVisible.value = false
+}
+async function removePeer(peer) { await mutate(() => deletePeer(peer.metadata.name), 'Peer 已删除') }
 function onRouteChange(target, data) { if (data?.fromSubPanel || typeof target !== 'string') return; router.push(target.startsWith('#') ? target.slice(1) || '/nodes' : target).catch(() => {}) }
 onMounted(() => { refresh(); wujieBus?.$on?.('routeChange', onRouteChange) })
+watch(active, refresh)
 onBeforeUnmount(() => wujieBus?.$off?.('routeChange', onRouteChange))
 </script>

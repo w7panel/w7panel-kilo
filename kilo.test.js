@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { addRoute, deleteRoute, moveNodes, setLeader } from './src/api.js'
-import { KEY, groupNodes, routeRows, validCidr } from './src/model.js'
+import { addRoute, deleteRoute, moveNodes, saveNodeSettings, savePeer, setLeader } from './src/api.js'
+import { KEY, groupNodes, routeRows, validCidr, validEndpoint, validPublicKey } from './src/model.js'
 
 function node(name, region, extra = {}) {
   return { metadata: { name, resourceVersion: '1', annotations: { [KEY.key]: `key-${name}`, [KEY.region]: region, ...extra } }, status: { addresses: [{ type: 'InternalIP', address: '10.1.0.1' }] } }
@@ -85,4 +85,32 @@ test('validates IPv4 and IPv6 CIDRs', () => {
   assert.equal(validCidr('2001:db8::/64'), true)
   assert.equal(validCidr('10.0.0.999/24'), false)
   assert.equal(validCidr('10.0.0.0/33'), false)
+})
+
+test('node connection settings update only editable Kilo annotations', async () => {
+  const nodes = fakeCluster([node('a', 'east', { [KEY.key]: 'keep-this', [KEY.forceEndpoint]: 'old.example:51820' })])
+  await saveNodeSettings('a', { endpoint: 'new.example:51821', internal: '-', keepalive: '25' })
+  assert.equal(nodes[0].metadata.annotations[KEY.forceEndpoint], 'new.example:51821')
+  assert.equal(nodes[0].metadata.annotations[KEY.forceInternal], '-')
+  assert.equal(nodes[0].metadata.annotations[KEY.keepalive], '25')
+  assert.equal(nodes[0].metadata.annotations[KEY.key], 'keep-this')
+  await assert.rejects(saveNodeSettings('a', { endpoint: 'bad', internal: '', keepalive: '' }), /Endpoint/)
+})
+
+test('validates endpoints and WireGuard keys', () => {
+  assert.equal(validEndpoint('example.com:51820'), true)
+  assert.equal(validEndpoint('[2001:db8::1]:51820'), true)
+  assert.equal(validEndpoint('example.com:65536'), false)
+  assert.equal(validPublicKey(Buffer.alloc(32, 1).toString('base64')), true)
+  assert.equal(validPublicKey('invalid'), false)
+})
+
+test('Peer creation uses the Kilo CRD endpoint and validates CIDRs', async () => {
+  const calls = []
+  globalThis.window = { $wujie: { props: { k8sproxy: async (path, options) => { calls.push({ path, options }); return Response.json({}) } } } }
+  const peer = { apiVersion: 'kilo.squat.ai/v1alpha1', kind: 'Peer', metadata: { name: 'branch-gateway' }, spec: { publicKey: Buffer.alloc(32, 1).toString('base64'), allowedIPs: ['10.5.0.1/32'], endpoint: { dnsOrIP: { dns: 'gateway.example.com' }, port: 51820 }, persistentKeepalive: 25 } }
+  await savePeer(peer)
+  assert.equal(calls[0].path, '/apis/kilo.squat.ai/v1alpha1/peers')
+  assert.equal(calls[0].options.method, 'POST')
+  await assert.rejects(savePeer({ ...peer, spec: { ...peer.spec, allowedIPs: ['bad'] } }), /网段/)
 })

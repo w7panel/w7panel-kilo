@@ -7,6 +7,8 @@ export default createRouter({
     { path: '/', redirect: '/nodes' },
     { path: '/nodes', name: 'nodes', component: Empty },
     { path: '/routes', name: 'routes', component: Empty },
+    { path: '/peers', name: 'peers', component: Empty },
+    { path: '/topology', name: 'topology', component: Empty },
     { path: '/:pathMatch(.*)*', redirect: '/nodes' },
   ],
 })

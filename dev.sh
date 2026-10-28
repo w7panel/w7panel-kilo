@@ -13,5 +13,5 @@ API_PID=$!
 VITE_PID=$!
 
 echo "Kilo 本地测试 UI: http://127.0.0.1:${PORT}（局域网地址见 Vite 输出）"
-echo "Kilo 本地测试 API: http://127.0.0.1:8016/health"
+echo "Kilo 本地测试 API: http://127.0.0.1:${KILO_API_PORT:-8016}/health"
 wait -n "$API_PID" "$VITE_PID"
