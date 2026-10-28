@@ -1,0 +1,7 @@
+apiVersion: v2
+name: w7panel-kilo
+description: Kilo WireGuard mesh for k3s with Cilium
+
+type: application
+version: 0.1.0
+appVersion: "0.7.0"
