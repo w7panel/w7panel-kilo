@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { addRoute, deleteRoute, moveNodes, saveNodeSettings, savePeer, setLeader } from './ui/api.js'
+import { addRoute, deleteRoute, moveNodes, renameRegion, saveNodeSettings, savePeer, setLeader } from './ui/api.js'
 import { KEY, groupNodes, routeRows, validCidr, validEndpoint, validPublicKey } from './ui/model.js'
 import { topologyLayout } from './ui/topology.js'
 
@@ -58,6 +58,13 @@ test('topology connects regions and keeps every member below its region', () => 
   assert.ok(graph.regions[1].x - graph.regions[0].x >= 300)
 })
 
+test('topology shows each static route in its region without overlapping members', () => {
+  const nodes = [node('a', 'east', { [KEY.routes]: '10.0.0.15/32,10.0.0.17/32' }), node('b', 'west', { [KEY.routes]: '10.0.64.16/32' })]
+  const graph = topologyLayout(groupNodes(nodes), routeRows(nodes))
+  assert.deepEqual(graph.regions.map((region) => region.routes.map((route) => route.cidr)), [['10.0.0.15/32', '10.0.0.17/32'], ['10.0.64.16/32']])
+  assert.ok(graph.regions[0].nodes[0].y - 24 > graph.regions[0].y + 50 + graph.regions[0].routes.length * 18)
+})
+
 test('route change moves all CIDRs to new leader and preserves unrelated annotations', async () => {
   const nodes = fakeCluster([node('a', 'east', { [KEY.leader]: '', [KEY.routes]: '10.0.0.0/24,10.2.0.0/24', keep: 'yes' }), node('b', 'east')])
   await setLeader('east', 'b')
@@ -80,6 +87,16 @@ test('adds and deletes one CIDR while retaining other routes', async () => {
   assert.equal(routeRows(nodes).length, 2)
   await deleteRoute('east', '10.0.0.0/24')
   assert.equal(nodes[0].metadata.annotations[KEY.routes], '10.2.0.0/24')
+})
+
+test('renames a whole region while retaining its leader and static routes', async () => {
+  const nodes = fakeCluster([node('a', 'east', { [KEY.leader]: 'true', [KEY.routes]: '10.0.0.0/24' }), node('b', 'east'), node('c', 'west')])
+  await renameRegion('east', 'north')
+  assert.deepEqual(nodes.slice(0, 2).map((item) => item.metadata.annotations[KEY.region]), ['north', 'north'])
+  assert.equal(nodes[0].metadata.annotations[KEY.leader], 'true')
+  assert.equal(nodes[0].metadata.annotations[KEY.routes], '10.0.0.0/24')
+  await assert.rejects(renameRegion('north', 'west'), /区域已存在/)
+  assert.equal(nodes[2].metadata.annotations[KEY.region], 'west')
 })
 
 test('blocks moving a route owning leader to another region', async () => {

@@ -117,6 +117,15 @@ export async function moveNodes(names, region) {
   }
 }
 
+export async function renameRegion(oldRegion, region) {
+  const nodes = await currentGroups()
+  const members = membersOf(nodes, oldRegion)
+  if (!members.length) throw new Error('区域已不存在，请刷新后重试')
+  if (oldRegion === region) return
+  if (membersOf(nodes, region).length) throw new Error(`「${regionName(region)}」区域已存在`)
+  for (const node of members) await patchAnnotations(nodeName(node), { [KEY.region]: region })
+}
+
 export async function setLeader(region, name) {
   const nodes = await currentGroups()
   const members = membersOf(nodes, region)

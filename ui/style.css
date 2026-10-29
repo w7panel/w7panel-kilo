@@ -16,7 +16,6 @@ html, body, #app { margin: 0; min-width: 320px; min-height: 100%; }
 .tabs a:hover, .tabs a.active { color: rgb(var(--primary-6, 22, 93, 255)); }
 .tabs a.active { border-color: rgb(var(--primary-6, 22, 93, 255)); font-weight: 500; }
 .tab-content { min-height: 280px; padding: 20px; background: var(--color-bg-2, #fff); }
-.app-shell.embedded .tabs, .app-shell.embedded .tab-content { padding-right: 0; padding-left: 0; }
 .load-error { margin: 16px 0; }
 .section-head { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-bottom: 20px; }
 .section-head h2 { margin: 0 0 5px; font-size: 16px; font-weight: 600; }
@@ -26,6 +25,7 @@ html, body, #app { margin: 0; min-width: 320px; min-height: 100%; }
 .region-dot { width: 8px; height: 8px; border-radius: 50%; background: rgb(var(--primary-6, 22, 93, 255)); }
 .region-kicker { display: block; margin-bottom: 3px; color: var(--color-text-3, #86909c); font-size: 12px; }
 .region-head h3 { margin: 0; font-size: 15px; font-weight: 600; }
+.region-name-row { display: flex; align-items: center; gap: 4px; }
 .region-leader { display: grid; gap: 3px; text-align: right; }
 .region-leader span { color: var(--color-text-3, #86909c); font-size: 12px; }
 .region-leader b { color: var(--color-text-2, #4e5969); font-size: 13px; font-weight: 500; }
@@ -65,6 +65,7 @@ html, body, #app { margin: 0; min-width: 320px; min-height: 100%; }
 .region-caption { fill: var(--color-text-3, #86909c); font-size: 11px; }
 .region-name { fill: var(--color-text-1, #1d2129); font-size: 18px; font-weight: 600; }
 .region-meta { fill: var(--color-text-2, #4e5969); font-size: 11px; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }
+.topology-route { fill: var(--color-text-2, #4e5969); font-size: 11px; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }
 .topology-node { fill: var(--color-bg-2, #fff); stroke: var(--color-border-2, #e5e6eb); stroke-width: 1; }
 .topology-node-name { fill: var(--color-text-1, #1d2129); font-size: 13px; font-weight: 600; }
 .topology-node-ip { fill: var(--color-text-3, #86909c); font-size: 10px; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }

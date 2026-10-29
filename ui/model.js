@@ -7,6 +7,7 @@ export const KEY = {
   internal: 'kilo.squat.ai/internal-ip',
   forceInternal: 'kilo.squat.ai/force-internal-ip',
   forceEndpoint: 'kilo.squat.ai/force-endpoint',
+  endpoint: 'kilo.squat.ai/endpoint',
   keepalive: 'kilo.squat.ai/persistent-keepalive',
 }
 
