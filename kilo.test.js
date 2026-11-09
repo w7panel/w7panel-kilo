@@ -66,7 +66,7 @@ test('topology shows each static route in its region without overlapping members
 })
 
 test('route change moves all CIDRs to new leader and preserves unrelated annotations', async () => {
-  const nodes = fakeCluster([node('a', 'east', { [KEY.leader]: '', [KEY.routes]: '10.0.0.0/24,10.2.0.0/24', keep: 'yes' }), node('b', 'east')])
+  const nodes = fakeCluster([node('a', 'east', { [KEY.leader]: '', [KEY.routes]: '10.0.0.0/24,10.2.0.0/24', keep: 'yes' }), node('b', 'east', { [KEY.forceEndpoint]: '203.0.113.2:51820' })])
   await setLeader('east', 'b')
   assert.equal(nodes[0].metadata.annotations[KEY.leader], undefined)
   assert.equal(nodes[0].metadata.annotations[KEY.routes], undefined)
@@ -76,9 +76,18 @@ test('route change moves all CIDRs to new leader and preserves unrelated annotat
 })
 
 test('partial leader change keeps route on the new leader when old node update fails', async () => {
-  const nodes = fakeCluster([node('a', 'east', { [KEY.leader]: 'true', [KEY.routes]: '10.0.0.0/24' }), node('b', 'east')], 'a')
+  const nodes = fakeCluster([node('a', 'east', { [KEY.leader]: 'true', [KEY.routes]: '10.0.0.0/24' }), node('b', 'east', { [KEY.forceEndpoint]: '203.0.113.2:51820' })], 'a')
   await assert.rejects(setLeader('east', 'b'), /a：模拟写入失败/)
   assert.equal(nodes[1].metadata.annotations[KEY.routes], '10.0.0.0/24')
+})
+
+test('leader change requires a forced endpoint before moving routes', async () => {
+  const nodes = fakeCluster([node('a', 'east', { [KEY.leader]: 'true', [KEY.routes]: '10.0.0.0/24' }), node('b', 'east', { [KEY.endpoint]: '203.0.113.2:51820' })])
+  await assert.rejects(setLeader('east', 'b'), /请先在连接设置中，将端点IP指定为该节点的公网IP/)
+  assert.equal(nodes[0].metadata.annotations[KEY.leader], 'true')
+  assert.equal(nodes[0].metadata.annotations[KEY.routes], '10.0.0.0/24')
+  assert.equal(nodes[1].metadata.annotations[KEY.leader], undefined)
+  assert.equal(nodes[1].metadata.annotations[KEY.routes], undefined)
 })
 
 test('adds and deletes one CIDR while retaining other routes', async () => {
@@ -122,13 +131,14 @@ test('validates IPv4 and IPv6 CIDRs', () => {
 })
 
 test('node connection settings update only editable Kilo annotations', async () => {
-  const nodes = fakeCluster([node('a', 'east', { [KEY.key]: 'keep-this', [KEY.forceEndpoint]: 'old.example:51820' })])
+  const nodes = fakeCluster([node('a', 'east', { [KEY.key]: 'keep-this', [KEY.forceEndpoint]: 'old.example:51820', [KEY.endpoint]: 'old.example:51820' })])
   await saveNodeSettings('a', { endpoint: 'new.example:51821', internal: '-', keepalive: '25' })
   assert.equal(nodes[0].metadata.annotations[KEY.forceEndpoint], 'new.example:51821')
+  assert.equal(nodes[0].metadata.annotations[KEY.endpoint], undefined)
   assert.equal(nodes[0].metadata.annotations[KEY.forceInternal], '-')
   assert.equal(nodes[0].metadata.annotations[KEY.keepalive], '25')
   assert.equal(nodes[0].metadata.annotations[KEY.key], 'keep-this')
-  await assert.rejects(saveNodeSettings('a', { endpoint: 'bad', internal: '', keepalive: '' }), /Endpoint/)
+  await assert.rejects(saveNodeSettings('a', { endpoint: 'bad', internal: '', keepalive: '' }), /端点 IP/)
 })
 
 test('validates endpoints and WireGuard keys', () => {

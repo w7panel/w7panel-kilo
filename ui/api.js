@@ -73,11 +73,12 @@ async function patchAnnotations(name, changes) {
 
 export async function saveNodeSettings(name, values) {
   const endpoint = values.endpoint.trim(), internal = values.internal.trim(), keepalive = values.keepalive.trim()
-  if (endpoint && !validEndpoint(endpoint)) throw new Error('公网 Endpoint 须为 host:端口，例如 example.com:51820')
+  if (endpoint && !validEndpoint(endpoint)) throw new Error('端点 IP 须为 host:端口，例如 203.0.113.1:51820')
   if (internal && internal !== '-' && !validCidr(internal)) throw new Error('内网 IP 须为 CIDR，例如 192.168.1.2/32；输入 - 可禁用')
   if (keepalive && (!/^\d+$/.test(keepalive) || Number(keepalive) > 2147483647)) throw new Error('Keepalive 须为非负整数秒数')
   await patchAnnotations(name, {
     [KEY.forceEndpoint]: endpoint || null,
+    ...(endpoint ? { [KEY.endpoint]: null } : {}),
     [KEY.forceInternal]: internal || null,
     [KEY.keepalive]: keepalive || null,
   })
@@ -132,6 +133,7 @@ export async function setLeader(region, name) {
   if (!members.some((node) => nodeName(node) === name)) throw new Error('目标节点不在该区域，请刷新后重试')
   const routes = routeValues(members)
   const target = members.find((node) => nodeName(node) === name)
+  if (!annotations(target)[KEY.forceEndpoint]) throw new Error('请先在连接设置中，将端点IP指定为该节点的公网IP')
   const merged = [...new Set([...routesOf(target), ...routes])]
   if (routes.length) await patchAnnotations(name, { [KEY.routes]: merged.join(',') })
   await patchAnnotations(name, { [KEY.leader]: 'true' })
